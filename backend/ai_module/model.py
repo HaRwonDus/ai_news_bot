@@ -2,6 +2,8 @@ import json
 import re
 from transformers import pipeline
 from difflib import SequenceMatcher
+from sqlalchemy import Column, Integer, String, Text, DateTime, func
+from backend.db.database import Base
 
 # --- 🔧 Инициализация моделей ---
 # Суммаризация немецких новостей
@@ -157,3 +159,4 @@ def summarize_multilang(news_json: str):
     if not results:
         return "⚠️ Нет подходящих новостей для перевода."
     return "\n\n".join(results)
+

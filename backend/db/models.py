@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime, Index, func
+from sqlalchemy import Column, Integer, String, Text, DateTime, func
 from backend.db.database import Base
 
 
@@ -30,14 +30,15 @@ class Article(Base):
     title = Column(String(512), nullable=False)
     url = Column(String(1024), nullable=False, unique=True)
     content = Column(Text, nullable=False)
+
     summary_de = Column(Text, default="")
     summary_en = Column(Text, default="")
     summary_ru = Column(Text, default="")
-    lang = Column(String(8), default="de")
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
 
-    __table_args__ = (
-        Index("idx_articles_created_at", "created_at"),
-        Index("idx_articles_title", "title"),
-        Index("idx_articles_url", "url"),
-    )
+    lang = Column(String(8), default="de")
+
+    # ⭐ Новое
+    category = Column(String(32), default="other")
+
+    created_at = Column(DateTime, server_default=func.now())
+
