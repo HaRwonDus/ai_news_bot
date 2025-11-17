@@ -37,8 +37,28 @@ class Article(Base):
 
     lang = Column(String(8), default="de")
 
-    # ⭐ Новое
     category = Column(String(32), default="other")
+
+    sentiment = Column(String(16), default="neutral")
 
     created_at = Column(DateTime, server_default=func.now())
 
+
+
+class UserPreferences(Base):
+    __tablename__ = "user_preferences"
+
+    id = Column(Integer, primary_key=True)
+    chat_id = Column(String, unique=True)
+
+    # любимые категории
+    favorite_categories = Column(String, default="")
+
+    # предпочтительная тональность
+    preferred_sentiment = Column(String, default="neutral")
+
+    # язык дайджеста
+    preferred_lang = Column(String, default="de")
+
+    # дата последнего обновления
+    updated_at = Column(DateTime, server_default=func.now())

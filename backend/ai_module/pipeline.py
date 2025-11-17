@@ -10,6 +10,7 @@ from backend.ai_module.model import (
 
 from backend.ai_module.category import categorize
 from backend.ai_module.cleaner import clean_article
+from backend.ai_module.sentiment import detect_sentiment
 
 from backend.db.database import SessionLocal
 from backend.db.models import News, Article
@@ -38,18 +39,21 @@ def _upsert_articles(session, raw_json: str, with_summaries: bool = False):
             raw_content = n.get("content", "") or ""
             content = clean_article(raw_content)
 
-            # --- Пропуск слишком маленьких статей ---
+            # --- Пропуск маленьких статей ---
             if len(content) < 200:
                 continue
 
-            # --- Суммаризация (опционально) ---
+            # --- Опциональная суммаризация ---
             summary_de = summarize_text_safe(content) if with_summaries else ""
 
             # --- Категоризация ---
             full_text_for_cat = (n.get("title", "") or "") + " " + content
             cat = categorize(full_text_for_cat)
 
-            # --- Сохранение ---
+            # --- Анализ настроения ---
+            sentiment = detect_sentiment(full_text_for_cat)
+
+            # --- Создание записи ---
             art = Article(
                 title=n.get("title", "")[:512],
                 url=n.get("url", "")[:1024],
@@ -57,6 +61,7 @@ def _upsert_articles(session, raw_json: str, with_summaries: bool = False):
                 summary_de=summary_de or "",
                 lang="de",
                 category=cat,
+                sentiment=sentiment,   # ⭐ добавлено
             )
 
             session.add(art)
@@ -232,5 +237,64 @@ def get_news_by_category(cat: str):
         """), {"cat": cat}).fetchall()
 
         return [(r[0], r[1]) for r in rows]
+    finally:
+        session.close()
+
+def get_sentiment_stats():
+    session = SessionLocal()
+    try:
+        from sqlalchemy import text
+
+        rows = session.execute(text("""
+            SELECT sentiment, COUNT(*)
+            FROM articles
+            WHERE created_at >= datetime('now','-3 day')
+            GROUP BY sentiment
+        """)).fetchall()
+
+        return {row[0]: row[1] for row in rows}
+
+    finally:
+        session.close()
+
+def recommend_personal_news(chat_id: str):
+    session = SessionLocal()
+
+    try:
+        # 1 — preferences
+        prefs = session.query(UserPreferences).filter_by(chat_id=chat_id).first()
+        if not prefs:
+            return ["⚠️ У тебя пока нет профиля. Используй /setfav"]
+
+        fav = prefs.favorite_categories.split(",") if prefs.favorite_categories else []
+        target_sent = prefs.preferred_sentiment
+
+        # 2 — получаем свежие статьи
+        from sqlalchemy import text
+        rows = session.execute(text("""
+            SELECT title, url, category, sentiment
+            FROM articles
+            WHERE created_at >= datetime('now','-2 day')
+        """)).fetchall()
+
+        scored = []
+        for t, url, cat, sent in rows:
+            score = 0
+            if cat in fav:
+                score += 0.6
+            if sent == target_sent:
+                score += 0.2
+
+            scored.append((score, t, url))
+
+        # сортировка
+        scored.sort(reverse=True, key=lambda x: x[0])
+
+        # выбираем топ 5
+        top = scored[:5]
+        return [
+            f"🗞️ {title}\n🔗 {url}"
+            for _, title, url in top
+        ]
     finally:
         session.close()
