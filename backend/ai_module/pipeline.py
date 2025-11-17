@@ -14,6 +14,8 @@ from backend.ai_module.sentiment import detect_sentiment
 
 from backend.db.database import SessionLocal
 from backend.db.models import News, Article
+from backend.db.models import News, Article, UserPreferences, UserCategoryStat
+from sqlalchemy import text
 
 from rust_core import fetch_full_articles
 
@@ -257,44 +259,78 @@ def get_sentiment_stats():
     finally:
         session.close()
 
-def recommend_personal_news(chat_id: str):
+def recommend_personal_news(chat_id: str, limit: int = 5):
+    """
+    Персональные рекомендации статей для заданного chat_id.
+    Учитываем:
+    - любимые категории
+    - предпочтительную тональность
+    - историю кликов по категориям
+    """
     session = SessionLocal()
-
     try:
-        # 1 — preferences
+        # --- 1) Предпочтения пользователя ---
         prefs = session.query(UserPreferences).filter_by(chat_id=chat_id).first()
-        if not prefs:
-            return ["⚠️ У тебя пока нет профиля. Используй /setfav"]
 
-        fav = prefs.favorite_categories.split(",") if prefs.favorite_categories else []
-        target_sent = prefs.preferred_sentiment
+        if prefs and prefs.favorite_categories:
+            fav_cats = [c.strip() for c in prefs.favorite_categories.split(",") if c.strip()]
+        else:
+            fav_cats = []
 
-        # 2 — получаем свежие статьи
-        from sqlalchemy import text
+        preferred_sentiment = prefs.preferred_sentiment if prefs else None
+
+        # --- 2) История поведения ---
+        stats_rows = session.query(UserCategoryStat).filter_by(chat_id=chat_id).all()
+        user_stats = {r.category: r.clicks for r in stats_rows}
+        max_clicks = max(user_stats.values()) if user_stats else 0
+
+        # --- 3) Берём свежие статьи за последние 3 дня ---
         rows = session.execute(text("""
             SELECT title, url, category, sentiment
             FROM articles
-            WHERE created_at >= datetime('now','-2 day')
+            WHERE created_at >= datetime('now','-3 day')
         """)).fetchall()
 
+        if not rows:
+            # fallback — просто взять последние 5 статей
+            rows = session.execute(text("""
+                SELECT title, url, category, sentiment
+                FROM articles
+                ORDER BY created_at DESC
+                LIMIT :limit
+            """), {"limit": limit}).fetchall()
+
         scored = []
-        for t, url, cat, sent in rows:
-            score = 0
-            if cat in fav:
+
+        for title, url, cat, sent in rows:
+            score = 0.0
+
+            # 60% — совпадение по любимым категориям
+            if fav_cats and cat in fav_cats:
                 score += 0.6
-            if sent == target_sent:
+
+            # 20% — совпадение по тональности
+            if preferred_sentiment and sent == preferred_sentiment:
                 score += 0.2
 
-            scored.append((score, t, url))
+            # 20% — поведенческий фактор: чаще открывал категорию → больше вес
+            if max_clicks and cat in user_stats:
+                score += 0.2 * (user_stats[cat] / max_clicks)
 
-        # сортировка
-        scored.sort(reverse=True, key=lambda x: x[0])
+            # Если ничего не сработало, чуть поднимаем свежие новости, чтобы не пусто
+            if score == 0:
+                score = 0.1
 
-        # выбираем топ 5
-        top = scored[:5]
-        return [
-            f"🗞️ {title}\n🔗 {url}"
-            for _, title, url in top
-        ]
+            scored.append((score, title, url))
+
+        if not scored:
+            return []
+
+        # сортируем по убыванию score
+        scored.sort(key=lambda x: x[0], reverse=True)
+        top = scored[:limit]
+
+        return [f"🗞️ {title}\n🔗 {url}" for _, title, url in top]
+
     finally:
         session.close()

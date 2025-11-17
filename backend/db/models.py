@@ -51,14 +51,19 @@ class UserPreferences(Base):
     id = Column(Integer, primary_key=True)
     chat_id = Column(String, unique=True)
 
-    # любимые категории
-    favorite_categories = Column(String, default="")
+    favorite_categories = Column(String, default="")   # "politics,tech"
+    preferred_lang = Column(String, default="de")      # de|en|ru
+    preferred_sentiment = Column(String, default="neutral")  # positive|neutral|negative
 
-    # предпочтительная тональность
-    preferred_sentiment = Column(String, default="neutral")
-
-    # язык дайджеста
-    preferred_lang = Column(String, default="de")
-
-    # дата последнего обновления
     updated_at = Column(DateTime, server_default=func.now())
+
+
+class UserCategoryStat(Base):
+    __tablename__ = "user_category_stats"
+
+    id = Column(Integer, primary_key=True)
+    chat_id = Column(String, index=True)
+    category = Column(String(32))
+    clicks = Column(Integer, default=0)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
