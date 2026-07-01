@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Poetry
+.venv/
+
+# Environment and local data
+.env
+news.db
+*.sqlite
+*.sqlite3
+
+# Rust
+backend/rust_core/target/
+
+# Editors and OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

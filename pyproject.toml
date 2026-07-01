@@ -1,0 +1,29 @@
+[project]
+name = "ai-news-bot"
+version = "0.1.0"
+description = "Telegram bot that collects German news with a Rust scraper and builds AI-powered digests."
+authors = [{ name = "Dmitriy" }]
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "aiogram>=3.6,<4.0",
+    "apscheduler>=3.10,<4.0",
+    "beautifulsoup4>=4.12,<5.0",
+    "python-dotenv>=1.0,<2.0",
+    "sqlalchemy>=2.0,<3.0",
+    "transformers>=4.41,<5.0",
+    "torch>=2.3,<3.0",
+    "sentencepiece>=0.2,<0.3",
+    "protobuf>=4.25,<6.0",
+    "sacremoses>=0.1,<0.2",
+]
+
+[tool.poetry]
+package-mode = false
+
+[tool.poetry.group.dev.dependencies]
+maturin = ">=1.6,<2.0"
+
+[build-system]
+requires = ["poetry-core>=1.9.0"]
+build-backend = "poetry.core.masonry.api"
