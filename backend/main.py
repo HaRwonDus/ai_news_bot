@@ -14,6 +14,7 @@ from backend.db.database import Base, engine, SessionLocal
 from backend.db.models import Subscriber
 from rust_core import fetch_news
 from backend.ai_module.model import summarize_news
+from backend.monitoring.wandb_logger import finish_wandb, init_wandb, log_event
 
 
 # --- Загружаем токен ---
@@ -55,6 +56,12 @@ async def send_auto_news(bot: Bot):
 async def main():
     # Создание таблиц, если их нет
     Base.metadata.create_all(bind=engine)
+    init_wandb(config={
+        "app": "telegram_bot",
+        "scheduler_interval_hours": 2,
+        "database": "sqlite",
+    })
+    log_event("bot_started")
 
     bot = Bot(token=TOKEN)
     dp = Dispatcher()
@@ -66,7 +73,11 @@ async def main():
     scheduler.start()
 
     print("🤖 Бот запущен! Автоновости каждые 2 часа.")
-    await dp.start_polling(bot)
+    try:
+        await dp.start_polling(bot)
+    finally:
+        log_event("bot_stopped")
+        finish_wandb()
 
 
 # --- Точка входа ---

@@ -1,4 +1,5 @@
 import json
+from collections import Counter
 from sqlalchemy.exc import IntegrityError
 
 from backend.ai_module.model import (
@@ -16,6 +17,7 @@ from backend.db.database import SessionLocal
 from backend.db.models import News, Article
 from backend.db.models import News, Article, UserPreferences, UserCategoryStat
 from sqlalchemy import text
+from backend.monitoring.wandb_logger import log_event
 
 from rust_core import fetch_full_articles
 
@@ -34,6 +36,11 @@ def _fetch_articles():
 def _upsert_articles(session, raw_json: str, with_summaries: bool = False):
     items = json.loads(raw_json)
     saved = 0
+    skipped_short = 0
+    duplicates = 0
+    errors = 0
+    categories = Counter()
+    sentiments = Counter()
 
     for n in items[:20]:
         try:
@@ -43,6 +50,7 @@ def _upsert_articles(session, raw_json: str, with_summaries: bool = False):
 
             # --- Пропуск маленьких статей ---
             if len(content) < 200:
+                skipped_short += 1
                 continue
 
             # --- Опциональная суммаризация ---
@@ -69,14 +77,28 @@ def _upsert_articles(session, raw_json: str, with_summaries: bool = False):
             session.add(art)
             session.flush()
             saved += 1
+            categories[cat] += 1
+            sentiments[sentiment] += 1
 
         except IntegrityError:
+            duplicates += 1
             session.rollback()
         except Exception:
+            errors += 1
             session.rollback()
 
     if saved:
         print(f"💾 Сохранено статей: {saved}")
+
+    return {
+        "articles_fetched": len(items),
+        "articles_saved": saved,
+        "articles_skipped_short": skipped_short,
+        "article_duplicates": duplicates,
+        "article_errors": errors,
+        **{f"category_{key}": value for key, value in categories.items()},
+        **{f"sentiment_{key}": value for key, value in sentiments.items()},
+    }
 
 
 # ---------------------------------------------------------
@@ -85,8 +107,9 @@ def _upsert_articles(session, raw_json: str, with_summaries: bool = False):
 def process_news_pipeline():
     session = SessionLocal()
     try:
+        log_event("pipeline_started", {"pipeline": "news"})
         raw = _fetch_articles()
-        _upsert_articles(session, raw, with_summaries=False)
+        metrics = _upsert_articles(session, raw, with_summaries=False)
 
         # Сохраняем в старую таблицу News (совместимость)
         news_list = json.loads(raw)
@@ -115,8 +138,16 @@ def process_news_pipeline():
             else:
                 summarized = "⚠️ Пока нет свежих новостей в истории."
 
+        log_event("pipeline_finished", {
+            "pipeline": "news",
+            "summary_chars": len(summarized or ""),
+            **metrics,
+        })
         return summarized
 
+    except Exception as exc:
+        log_event("pipeline_failed", {"pipeline": "news", "error": str(exc)})
+        raise
     finally:
         session.close()
 
@@ -125,50 +156,75 @@ def process_news_pipeline():
 #  /smartnews — глубокая выжимка
 # ---------------------------------------------------------
 def process_smart_pipeline():
+    log_event("pipeline_started", {"pipeline": "smartnews"})
     raw = _fetch_articles()
     print("🤖 AI: обрабатываем контент...")
 
     session = SessionLocal()
     try:
-        _upsert_articles(session, raw, with_summaries=True)
+        metrics = _upsert_articles(session, raw, with_summaries=True)
         session.commit()
     finally:
         session.close()
 
-    return smart_summarize(raw)
+    try:
+        result = smart_summarize(raw)
+        log_event("pipeline_finished", {
+            "pipeline": "smartnews",
+            "summary_chars": len(result or ""),
+            **metrics,
+        })
+        return result
+    except Exception as exc:
+        log_event("pipeline_failed", {"pipeline": "smartnews", "error": str(exc)})
+        raise
 
 
 # ---------------------------------------------------------
 #  /multilangnews — выжимка на DE/EN/RU
 # ---------------------------------------------------------
 def process_multilang_pipeline():
+    log_event("pipeline_started", {"pipeline": "multilangnews"})
     raw = _fetch_articles()
     print("🤖 AI: создаём выжимку и переводы...")
 
     session = SessionLocal()
     try:
-        _upsert_articles(session, raw, with_summaries=True)
+        metrics = _upsert_articles(session, raw, with_summaries=True)
         session.commit()
     finally:
         session.close()
 
-    return summarize_multilang(raw)
+    try:
+        result = summarize_multilang(raw)
+        log_event("pipeline_finished", {
+            "pipeline": "multilangnews",
+            "summary_chars": len(result or ""),
+            **metrics,
+        })
+        return result
+    except Exception as exc:
+        log_event("pipeline_failed", {"pipeline": "multilangnews", "error": str(exc)})
+        raise
 
 
 # ---------------------------------------------------------
 #  Автосбор для планировщика (каждые 2 часа)
 # ---------------------------------------------------------
 def auto_collect_news(fetch_fn, summarize_fn, session_maker):
+    log_event("pipeline_started", {"pipeline": "auto_collect"})
     print("🦀 Rust: автоматический сбор новостей...")
 
     try:
         raw = fetch_fn()
     except Exception as e:
         print(f"❌ Ошибка fetch_fn: {e}")
+        log_event("pipeline_failed", {"pipeline": "auto_collect", "stage": "fetch", "error": str(e)})
         return "⚠️ Ошибка получения данных из Rust."
 
     if not raw:
         print("⚠️ Rust вернул пустоту")
+        log_event("pipeline_finished", {"pipeline": "auto_collect", "articles_fetched": 0})
         return "⚠️ Нет данных."
 
     print(f"📥 Пример данных: {raw[:300]}")
@@ -200,6 +256,12 @@ def auto_collect_news(fetch_fn, summarize_fn, session_maker):
     finally:
         session.close()
 
+    log_event("pipeline_finished", {
+        "pipeline": "auto_collect",
+        "articles_fetched": len(json.loads(raw)),
+        "news_saved": count,
+        "summary_chars": len(summarized or ""),
+    })
     return summarized
 
 

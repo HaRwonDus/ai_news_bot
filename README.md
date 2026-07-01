@@ -102,6 +102,83 @@ poetry run python -m backend.main
 
 Первый вызов команд, использующих ML-модели, может быть долгим: `transformers` скачает модели Hugging Face в локальный кеш.
 
+## Docker
+
+Создайте `.env` из шаблона и укажите токен:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+Минимальный `.env` для Docker:
+
+```env
+BOT_TOKEN=123456:telegram_bot_token
+WANDB_ENABLED=false
+```
+
+Сборка и запуск:
+
+```powershell
+docker compose up --build
+```
+
+Запуск в фоне:
+
+```powershell
+docker compose up -d --build
+```
+
+Логи:
+
+```powershell
+docker compose logs -f bot
+```
+
+Остановка:
+
+```powershell
+docker compose down
+```
+
+В Docker база хранится в volume `bot_data` по пути `/app/data/news.db`, а кеш моделей Hugging Face - в volume `hf_cache`.
+
+## Weights & Biases
+
+W&B интеграция выключена по умолчанию и не мешает запуску без аккаунта.
+
+Чтобы включить логирование, добавьте в `.env`:
+
+```env
+WANDB_ENABLED=true
+WANDB_PROJECT=ai-news-bot
+WANDB_ENTITY=your_wandb_entity
+WANDB_RUN_NAME=local-bot-run
+WANDB_MODE=online
+```
+
+Для локальной отладки без отправки данных в облако:
+
+```env
+WANDB_ENABLED=true
+WANDB_MODE=offline
+```
+
+Перед online-запуском авторизуйтесь:
+
+```powershell
+poetry run wandb login
+```
+
+Бот логирует:
+
+- старт и остановку приложения;
+- старт, успешное завершение и ошибки пайплайнов;
+- количество полученных, сохраненных и пропущенных статей;
+- дубли и ошибки сохранения;
+- распределение по категориям и тональности;
+- длину итоговой сводки.
+
 ## Команды бота
 
 | Команда | Назначение |
