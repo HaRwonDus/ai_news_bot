@@ -14,7 +14,13 @@ __pycache__/
 news.db
 *.sqlite
 *.sqlite3
-data/
+data/raw/*
+!data/raw/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
+data/versions/*
+!data/versions/.gitkeep
+artifacts/
 wandb/
 
 # Rust

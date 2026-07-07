@@ -17,3 +17,5 @@ news.db
 backend/rust_core/target/
 wandb/
 data/
+artifacts/
+mlruns/

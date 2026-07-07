@@ -1,0 +1,21 @@
+FROM pytorch/pytorch:2.5.1-cuda12.4-cudnn9-runtime
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    GIT_PYTHON_REFRESH=quiet \
+    PIP_NO_CACHE_DIR=1
+
+WORKDIR /app
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements-mlops.txt ./
+RUN pip install --no-cache-dir -r requirements-mlops.txt
+
+COPY training ./training
+COPY serving ./serving
+COPY monitoring ./monitoring
+
+ENV PYTHONPATH=/app
