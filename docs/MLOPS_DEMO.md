@@ -11,6 +11,28 @@ This demo turns the bot into a local MLOps stand:
 - Grafana dashboards
 - simple data drift detection
 
+## Quick Start
+
+To start the full Docker stand on a new machine:
+
+```powershell
+.\scripts\start_mlops.ps1
+```
+
+This starts MLflow infrastructure, creates the demo model in the registry, then starts serving and monitoring. More Docker startup details are in `docs/DOCKER_QUICKSTART.md`.
+
+The startup script first tries PostgreSQL. If PostgreSQL is unavailable or unhealthy, it falls back to MySQL automatically:
+
+```powershell
+.\scripts\start_mlops.ps1 -DbBackend auto
+```
+
+You can force MySQL on machines where PostgreSQL is problematic:
+
+```powershell
+.\scripts\start_mlops.ps1 -DbBackend mysql
+```
+
 ## 1. Start MLflow
 
 ```powershell
@@ -67,19 +89,31 @@ Registry model:
 
 The demo keeps the noisy v2 away from Production, which shows the rollback story clearly.
 
-## 3.1 CUDA Training
+## 3.1 PyTorch Training With CPU Fallback
 
-CUDA training is available as a separate PyTorch training service. It logs GPU-related params and metrics to MLflow:
+PyTorch training is available as a separate CPU-safe training service. Use this on laptops without CUDA:
+
+```powershell
+docker compose --profile torch run --rm training-torch
+```
+
+It logs hardware params and metrics to MLflow:
 
 - `trainer=torch`
-- `requested_device=cuda`
-- `device`
+- `requested_device=auto`
+- `device=cpu` or `device=cuda`
 - `cuda_available`
 - `cuda_device_count`
 - `gpu_name`
 - `torch_version`
 - `max_cuda_memory_mb`
 - `train_seconds`
+
+On a laptop without CUDA, this logs `device=cpu` and does not require NVIDIA Docker support.
+
+## 3.2 Forced CUDA Training
+
+Use this only on a machine with NVIDIA GPU support available inside Docker:
 
 Prerequisites:
 
@@ -94,17 +128,7 @@ docker compose --profile cuda build training-cuda
 docker compose --profile cuda run --rm training-cuda
 ```
 
-For a non-GPU smoke test, use the normal MLflow image only if PyTorch is installed there, or run the CUDA image with CPU fallback:
-
-```powershell
-docker compose --profile cuda run --rm training-cuda python -m training.train `
-  --trainer torch `
-  --device auto `
-  --dataset-version v3 `
-  --run-name torch-auto-v3
-```
-
-If `--device cuda` is requested and CUDA is unavailable, training fails fast and explains what to check.
+This service reserves GPU devices at Docker level. On CPU-only machines, use `training-torch` instead.
 
 ## 4. Serve The Production Model
 
