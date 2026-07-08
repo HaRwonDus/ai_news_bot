@@ -1,17 +1,22 @@
-from transformers import pipeline
+_sentiment_model = None
 
-# Немецкий sentiment-анализ (очень точный)
-sentiment_model = pipeline(
-    "sentiment-analysis",
-    model="oliverguhr/german-sentiment-bert"
-)
+
+def get_sentiment_model():
+    global _sentiment_model
+    if _sentiment_model is None:
+        from transformers import pipeline
+
+        _sentiment_model = pipeline(
+            "sentiment-analysis",
+            model="oliverguhr/german-sentiment-bert",
+        )
+    return _sentiment_model
+
 
 def detect_sentiment(text: str) -> str:
-    """
-    Возвращает: positive / negative / neutral
-    """
+    """Return positive, negative, or neutral."""
     try:
-        result = sentiment_model(text[:500])[0]  # ограничим текст
+        result = get_sentiment_model()(text[:500])[0]
         label = result["label"].lower()
 
         if "positive" in label:
@@ -19,6 +24,5 @@ def detect_sentiment(text: str) -> str:
         if "negative" in label:
             return "negative"
         return "neutral"
-
     except Exception:
         return "neutral"

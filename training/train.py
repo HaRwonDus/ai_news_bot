@@ -3,12 +3,14 @@ from __future__ import annotations
 import argparse
 import os
 import time
+import warnings
 from pathlib import Path
 
 import joblib
 import mlflow
 import mlflow.sklearn
 import pandas as pd
+from mlflow.models import infer_signature
 from mlflow.tracking import MlflowClient
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
@@ -43,12 +45,14 @@ def _transition_stage(run_id: str, stage: str) -> str | None:
         client.set_model_version_tag(MODEL_NAME, version.version, "demo_stage", "Development")
         return version.version
 
-    client.transition_model_version_stage(
-        name=MODEL_NAME,
-        version=version.version,
-        stage=stage,
-        archive_existing_versions=(stage == "Production"),
-    )
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=FutureWarning, module="mlflow")
+        client.transition_model_version_stage(
+            name=MODEL_NAME,
+            version=version.version,
+            stage=stage,
+            archive_existing_versions=(stage == "Production"),
+        )
     client.set_model_version_tag(MODEL_NAME, version.version, "stage_reason", f"Demo transition to {stage}")
     return version.version
 
@@ -132,10 +136,14 @@ def train_sklearn_once(
         mlflow.log_artifact(metrics["classification_report_path"])
         mlflow.log_artifact(str(model_path))
         mlflow.log_artifact(str(dataset_path), artifact_path="dataset")
+        input_example = data["text"].head(2).tolist()
+        signature = infer_signature(input_example, model.predict(input_example))
         mlflow.sklearn.log_model(
             sk_model=model,
             artifact_path="model",
             registered_model_name=MODEL_NAME,
+            input_example=input_example,
+            signature=signature,
         )
 
         version = _transition_stage(run.info.run_id, stage or "")

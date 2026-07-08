@@ -20,8 +20,8 @@ def _import_torch():
         from torch import nn
     except ImportError as exc:
         raise RuntimeError(
-            "PyTorch is not installed in this image. Use the training-cuda service "
-            "or install torch before running --trainer torch."
+            "PyTorch is not installed in this image. Use the training-torch or "
+            "training-cuda service, or install torch before running --trainer torch."
         ) from exc
     return torch, nn
 
